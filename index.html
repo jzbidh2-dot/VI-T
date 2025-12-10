@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TypeMaster: Luyện Gõ 10 Ngón</title>
+    <style>
+        :root {
+            --bg-color: #1e1e2e;
+            --text-color: #cdd6f4;
+            --highlight: #f9e2af;
+            --correct: #a6e3a1;
+            --wrong: #f38ba8;
+            --current: #89b4fa;
+            --box-bg: #313244;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Roboto Mono', monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        h1 { margin-bottom: 10px; color: var(--current); text-shadow: 0 0 10px rgba(137, 180, 250, 0.5); }
+
+        /* Khung điều khiển */
+        .controls {
+            margin-bottom: 20px;
+            background: var(--box-bg);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        select {
+            padding: 8px 15px;
+            background: var(--bg-color);
+            color: var(--text-color);
+            border: 1px solid var(--current);
+            border-radius: 5px;
+            font-family: inherit;
+            cursor: pointer;
+        }
+
+        .btn-restart {
+            padding: 8px 20px;
+            background: var(--current);
+            color: var(--bg-color);
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-restart:hover { opacity: 0.8; }
+
+        /* Khu vực hiển thị chữ */
+        .typing-area {
+            background: var(--box-bg);
+            padding: 30px;
+            border-radius: 15px;
+            width: 80%;
+            max-width: 900px;
+            min-height: 150px;
+            font-size: 24px;
+            line-height: 1.6;
+            position: relative;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+            user-select: none; /* Không cho bôi đen */
+            cursor: text;
+        }
+
+        /* Các trạng thái của ký tự */
+        span { position: relative; }
+        .correct { color: var(--correct); }
+        .wrong { color: var(--wrong); text-decoration: underline; }
+        .current { 
+            background-color: rgba(137, 180, 250, 0.2); 
+            color: var(--highlight);
+            border-bottom: 2px solid var(--current);
+        }
+        
+        /* Con trỏ nhấp nháy tại ký tự hiện tại */
+        .current::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            width: 2px;
+            height: 100%;
+            background-color: var(--current);
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink { 50% { opacity: 0; } }
+
+        /* Bảng thống kê */
+        .stats {
+            display: flex;
+            gap: 40px;
+            margin-top: 20px;
+            font-size: 1.2rem;
+        }
+        .stat-box {
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--highlight);
+        }
+
+        /* Hướng dẫn phím (Gợi ý) */
+        .hint {
+            margin-top: 20px;
+            font-size: 0.9rem;
+            opacity: 0.7;
+        }
+        
+        /* Input ẩn để bắt sự kiện gõ trên điện thoại */
+        #hiddenInput { opacity: 0; position: absolute; z-index: -1; }
+
+    </style>
+</head>
+<body>
+
+    <h1>TypeMaster Pro</h1>
+
+    <div class="controls">
+        <label for="levelSelect">Cấp độ:</label>
+        <select id="levelSelect" onchange="changeLevel()">
+            <option value="1">Level 1: Hàng cơ sở (ASDF JKL;)</option>
+            <option value="2">Level 2: Hàng trên (QWERTY UIOP)</option>
+            <option value="3">Level 3: Hàng dưới (ZXCV BNM)</option>
+            <option value="4">Level 4: Chữ thường toàn bàn phím</option>
+            <option value="5">Level 5: Chữ Hoa (Luyện ngón út - Shift)</option>
+            <option value="6">Level 6: Hàng số (12345 67890)</option>
+            <option value="7">Level 7: Ký tự đặc biệt cơ bản (,.?!)</option>
+            <option value="8">Level 8: Ký tự Code ([{<>}])</option>
+            <option value="9">Level 9: Từ vựng tiếng Anh cơ bản</option>
+            <option value="10">Level 10: Code JavaScript (Hacker Mode)</option>
+        </select>
+        <button class="btn-restart" onclick="resetGame()">Làm mới (R)</button>
+    </div>
+
+    <div class="typing-area" id="display" onclick="focusInput()">
+        Đang tải...
+    </div>
+
+    <div class="stats">
+        <div class="stat-box">
+            <div>WPM</div>
+            <div class="stat-value" id="wpm">0</div>
+        </div>
+        <div class="stat-box">
+            <div>Chính xác</div>
+            <div class="stat-value" id="accuracy">100%</div>
+        </div>
+    </div>
+
+    <div class="hint">Nhấn phím bất kỳ để bắt đầu. Nhấn ESC để reset.</div>
+    <input type="text" id="hiddenInput">
+
+    <script>
+        // Cấu hình các level
+        const levels = {
+            1: { chars: "asdfjkl;", type: "random", len: 40 },
+            2: { chars: "qwertyuiop", type: "random", len: 40 },
+            3: { chars: "zxcvbnm", type: "random", len: 40 },
+            4: { chars: "abcdefghijklmnopqrstuvwxyz", type: "random", len: 50 },
+            5: { chars: "ABCDEFGHIJKLMNOPQRSTUVWXYZ", type: "random", len: 40 },
+            6: { chars: "1234567890", type: "random", len: 30 },
+            7: { chars: ".,?!'\";:", type: "random", len: 30 },
+            8: { chars: "[]{}()<>!@#$%^&*", type: "random", len: 30 },
+            9: { 
+                words: ["the", "be", "to", "of", "and", "a", "in", "that", "have", "I", "it", "for", "not", "on", "with", "he", "as", "you", "do", "at"], 
+                type: "sentence", 
+                len: 15 
+            },
+            10: {
+                words: ["function", "return", "const", "let", "var", "if", "else", "for", "while", "console.log", "true", "false", "null", "undefined", "=>"],
+                type: "code",
+                len: 10
+            }
+        };
+
+        let currentText = "";
+        let currentIndex = 0;
+        let startTime = null;
+        let errors = 0;
+        let isFinished = false;
+
+        const displayDiv = document.getElementById('display');
+        const wpmEl = document.getElementById('wpm');
+        const accEl = document.getElementById('accuracy');
+        const levelSelect = document.getElementById('levelSelect');
+        const hiddenInput = document.getElementById('hiddenInput');
+
+        // Hàm sinh văn bản ngẫu nhiên dựa trên Level
+        function generateText(levelId) {
+            const config = levels[levelId];
+            let text = "";
+
+            if (config.type === "random") {
+                // Tạo chuỗi ký tự ngẫu nhiên, thêm dấu cách
+                for (let i = 0; i < config.len; i++) {
+                    const char = config.chars[Math.floor(Math.random() * config.chars.length)];
+                    text += char;
+                    if (Math.random() > 0.8 && i < config.len - 1) text += " "; // Thêm dấu cách ngẫu nhiên
+                }
+            } else {
+                // Ghép các từ lại
+                for (let i = 0; i < config.len; i++) {
+                    text += config.words[Math.floor(Math.random() * config.words.length)];
+                    if (i < config.len - 1) text += " ";
+                }
+            }
+            return text;
+        }
+
+        // Render văn bản ra màn hình
+        function renderText() {
+            displayDiv.innerHTML = "";
+            currentText.split('').forEach((char, index) => {
+                const span = document.createElement('span');
+                span.innerText = char;
+                if (index === currentIndex) span.classList.add('current');
+                displayDiv.appendChild(span);
+            });
+        }
+
+        // Khởi động lại
+        function resetGame() {
+            const level = levelSelect.value;
+            currentText = generateText(level);
+            currentIndex = 0;
+            startTime = null;
+            errors = 0;
+            isFinished = false;
+            wpmEl.innerText = 0;
+            accEl.innerText = "100%";
+            renderText();
+            focusInput();
+        }
+
+        function changeLevel() {
+            resetGame();
+            focusInput();
+        }
+
+        // Focus vào input ẩn để gõ
+        function focusInput() {
+            hiddenInput.value = "";
+            hiddenInput.focus();
+        }
+
+        // Xử lý sự kiện gõ phím
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                resetGame();
+                return;
+            }
+
+            // Bỏ qua các phím chức năng (Shift, Ctrl, Alt...) trừ khi nó là ký tự cần gõ
+            if (e.key.length > 1 && e.key !== "Backspace") return; 
+
+            // Ngăn chặn hành vi cuộn trang khi bấm Space
+            if(e.key === " ") e.preventDefault();
+
+            if (isFinished) return;
+
+            const spans = displayDiv.querySelectorAll('span');
+            const targetChar = currentText[currentIndex];
+
+            // Bắt đầu tính giờ khi gõ ký tự đầu tiên
+            if (!startTime) startTime = new Date();
+
+            if (e.key === targetChar) {
+                // Gõ đúng
+                spans[currentIndex].classList.remove('current', 'wrong');
+                spans[currentIndex].classList.add('correct');
+                currentIndex++;
+
+                if (currentIndex < currentText.length) {
+                    spans[currentIndex].classList.add('current');
+                } else {
+                    // Hoàn thành
+                    isFinished = true;
+                    calculateStats();
+                    spans[currentIndex-1].classList.remove('current'); // Xóa cursor ở cuối
+                    setTimeout(() => alert("Hoàn thành! Nhấn OK để qua màn mới."), 10);
+                    setTimeout(resetGame, 1000);
+                }
+            } else {
+                // Gõ sai
+                if(!spans[currentIndex].classList.contains('wrong')) {
+                   errors++;
+                   spans[currentIndex].classList.add('wrong');
+                }
+            }
+            calculateStats();
+        });
+
+        function calculateStats() {
+            if (!startTime) return;
+            
+            const timeNow = new Date();
+            const timeDiff = (timeNow - startTime) / 1000 / 60; // Tính bằng phút
+            
+            if (timeDiff > 0) {
+                // WPM = (Số từ) / Số phút. Quy ước 1 từ = 5 ký tự
+                const wpm = Math.round((currentIndex / 5) / timeDiff);
+                wpmEl.innerText = wpm;
+            }
+
+            const totalTyped = currentIndex + errors;
+            const accuracy = totalTyped === 0 ? 100 : Math.round(((totalTyped - errors) / totalTyped) * 100);
+            accEl.innerText = accuracy + "%";
+        }
+
+        // Khởi chạy lần đầu
+        resetGame();
+
+        // Tự động focus khi click chuột bất kỳ đâu
+        document.addEventListener('click', () => {
+            focusInput();
+        });
+
+    </script>
+</body>
+</html>
